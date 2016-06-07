@@ -47,6 +47,28 @@ get_sample_data(vec3 in_sampling_pos)
 
 }
 
+float
+distance(vec3 first , vec3 second)
+{
+	vec3 dist = second-first;
+	return sqrt(dist.x*dist.x + dist.y*dist.y + dist.z*dist.z);
+}
+
+vec3
+get_gradient(vec3 pos)
+{
+	vec3 prevx = pos - vec3(1,0,0);
+	vec3 nextx = pos + vec3(1,0,0);
+	vec3 prevy = pos - vec3(0,1,0);
+	vec3 nexty = pos + vec3(0,1,0);
+	vec3 prevz = pos - vec3(0,0,1);
+	vec3 nextz = pos + vec3(0,0,1);
+	float dx = get_sample_data(nextx) - get_sample_data(prevx);
+	float dy = get_sample_data(nexty) - get_sample_data(prevy);
+	float dz = get_sample_data(nextz) - get_sample_data(prevz);
+	return vec3(dx,dy,dz)/2;
+}
+
 void main()
 {
     /// One step trough the volume
@@ -134,19 +156,47 @@ void main()
 	if (s > iso_value) {
         dst = vec4(light_diffuse_color, 1.0);
 		}
+	vec3 intersect = sampling_pos;
 
         // increment the ray sampling position
-        sampling_pos += ray_increment;
 #if TASK == 13 // Binary Search
-        s = get_sample_data(sampling_pos - ray_increment*1.5);
+        s = get_sample_data(sampling_pos);
+	float epsilon = 0.01;
 	if (s > iso_value) {
-		dst = vec4(light_diffuse_color, 1.0);
-	} else {
-	dst = vec4(0,0,0,0);
-	} 
+		vec3 upper = sampling_pos;
+		vec3 lower = sampling_pos-ray_increment;
+		while (distance(upper , lower) > epsilon)
+		{
+			vec3 middle = (upper+lower)/2;
+			if (get_sample_data(middle) > iso_value) {
+				upper = middle;
+			} else lower = middle;
+		}
+	intersect = lower;
+
+	}  
 #endif
+        sampling_pos += ray_increment;
+
+	vec3 normal = get_gradient(intersect);
 #if ENABLE_LIGHTNING == 1 // Add Shading
-        IMPLEMENTLIGHT;
+	
+	vec3 L = normalize(light_position - intersect);
+	vec3 E = normalize(-intersect);
+	vec3 R = normalize(-reflect(L,normal));
+	
+	vec4 ambient = vec4(light_ambient_color , 1.0);
+
+	vec4 diffuse = vec4(light_diffuse_color,1.0)*max(dot(normal,L),0.0);
+
+	vec4 specular = vec4(light_specular_color,1.0)* pow(max(dot(R,E),0.0),light_ref_coef);
+
+	if (get_sample_data(intersect) > iso_value) {
+	dst = ambient + diffuse + specular;
+	//dst = vec4(1,0,0,1);
+	}
+
+
 #if ENABLE_SHADOWING == 1 // Add Shadows
         IMPLEMENTSHADOW;
 #endif
@@ -187,4 +237,5 @@ void main()
     // return the calculated color value
     FragColor = dst;
 }
+
 
