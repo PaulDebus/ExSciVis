@@ -47,26 +47,23 @@ get_sample_data(vec3 in_sampling_pos)
 
 }
 
-float
-distance(vec3 first , vec3 second)
-{
-	vec3 dist = second-first;
-	return sqrt(dist.x*dist.x + dist.y*dist.y + dist.z*dist.z);
-}
-
 vec3
 get_gradient(vec3 pos)
 {
-	vec3 prevx = pos - vec3(1,0,0);
-	vec3 nextx = pos + vec3(1,0,0);
-	vec3 prevy = pos - vec3(0,1,0);
-	vec3 nexty = pos + vec3(0,1,0);
-	vec3 prevz = pos - vec3(0,0,1);
-	vec3 nextz = pos + vec3(0,0,1);
+	float dim_x = volume_dimensions.x / max_bounds.x;
+	float dim_y = volume_dimensions.y / max_bounds.y;
+	float dim_z = volume_dimensions.z / max_bounds.z;
+
+	vec3 prevx = pos - vec3(1/dim_x,0,0);
+	vec3 nextx = pos + vec3(1/dim_x,0,0);
+	vec3 prevy = pos - vec3(0,1/dim_y,0);
+	vec3 nexty = pos + vec3(0,1/dim_y,0);
+	vec3 prevz = pos - vec3(0,0,1/dim_z);
+	vec3 nextz = pos + vec3(0,0,1/dim_z);
 	float dx = get_sample_data(nextx) - get_sample_data(prevx);
 	float dy = get_sample_data(nexty) - get_sample_data(prevy);
 	float dz = get_sample_data(nextz) - get_sample_data(prevz);
-	return vec3(dx,dy,dz)/2;
+	return normalize(vec3(dx,dy,dz));
 }
 
 void main()
@@ -114,6 +111,7 @@ void main()
 
     dst = max_val;
 #endif 
+    float s_alt=0;
     
 #if TASK == 11
 	vec4 avg_val = vec4(0.0 , 0.0 , 0.0 , 0.0);
@@ -151,10 +149,12 @@ void main()
 	dst = vec4(0,0,0,0);
     while (inside_volume)
     {
+	bool hit = false;
         // get sample
         float s = get_sample_data(sampling_pos);
-	if (s > iso_value) {
-        dst = vec4(light_diffuse_color, 1.0);
+	if ((s-iso_value)*(s_alt-iso_value) < 0) {
+		dst = vec4(light_diffuse_color, 1.0);
+		hit = true;
 		}
 	vec3 intersect = sampling_pos;
 
@@ -162,28 +162,35 @@ void main()
 #if TASK == 13 // Binary Search
         s = get_sample_data(sampling_pos);
 	float epsilon = 0.01;
-	if (s > iso_value) {
+	if ((s-iso_value)*(s_alt-iso_value) < 0) {
+		hit = true;
 		vec3 upper = sampling_pos;
 		vec3 lower = sampling_pos-ray_increment;
-		while (distance(upper , lower) > epsilon)
+		while (length(upper - lower) > epsilon)
 		{
 			vec3 middle = (upper+lower)/2;
 			if (get_sample_data(middle) > iso_value) {
 				upper = middle;
 			} else lower = middle;
 		}
-	intersect = lower;
+	intersect = upper;
 
 	}  
 #endif
-        sampling_pos += ray_increment;
 
+        sampling_pos += ray_increment;
 	vec3 normal = get_gradient(intersect);
+	vec4 norm = vec4(normal , 1.0);
+	if ((get_sample_data(intersect) - iso_value) * (s_alt-iso_value) <= 0) {
+	dst = norm;
+	}
 #if ENABLE_LIGHTNING == 1 // Add Shading
 	
+	if ((get_sample_data(intersect) - iso_value) * (s_alt-iso_value) <= 0) {
 	vec3 L = normalize(light_position - intersect);
 	vec3 E = normalize(-intersect);
 	vec3 R = normalize(-reflect(L,normal));
+
 	
 	vec4 ambient = vec4(light_ambient_color , 1.0);
 
@@ -191,9 +198,8 @@ void main()
 
 	vec4 specular = vec4(light_specular_color,1.0)* pow(max(dot(R,E),0.0),light_ref_coef);
 
-	if (get_sample_data(intersect) > iso_value) {
-	dst = ambient + diffuse + specular;
-	//dst = vec4(1,0,0,1);
+
+	dst = ambient + diffuse + specular  ;
 	}
 
 
@@ -203,6 +209,8 @@ void main()
 #endif
 
         // update the loop termination condition
+	if (hit) break;
+	s_alt=s;
         inside_volume = inside_volume_bounds(sampling_pos);
     }
 #endif 
