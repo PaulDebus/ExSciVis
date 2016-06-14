@@ -204,7 +204,21 @@ void main()
 
 
 #if ENABLE_SHADOWING == 1 // Add Shadows
-        IMPLEMENTSHADOW;
+	if ((get_sample_data(intersect) - iso_value) * (s_alt-iso_value) <= 0) {
+		vec3 toLight = light_position - intersect;
+		int STEPS = 300;
+		vec3 current = intersect;
+		vec3 increment = -toLight / STEPS;
+		for (int i = 0; i < STEPS; i++) {
+			current += increment;
+			if (get_sample_data(current) > iso_value) {
+				dst = vec4(light_ambient_color , 0.7);			
+				//dst = vec4(1, 0,0, 1.0);			
+				break;
+			}
+			
+		}
+	}
 #endif
 #endif
 
