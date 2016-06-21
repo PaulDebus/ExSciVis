@@ -233,17 +233,23 @@ void main()
     // the traversal loop,
     // termination when the sampling position is outside volume boundarys
     // another termination condition for early ray termination is added
+    dst = vec4(0,0,0,0);
+
+    bool front2back = false;
     while (inside_volume)
     {
-        // get sample
+	 // get sample
 #if ENABLE_OPACITY_CORRECTION == 1 // Opacity Correction
         IMPLEMENT;
 #else
         float s = get_sample_data(sampling_pos);
+        vec4 color = texture(transfer_texture, vec2(s, s));
 #endif
-        // dummy code
-        dst = vec4(light_specular_color, 1.0);
-
+	if (front2back) {
+		if (dst.a > 1) break;
+		color.a = color.a/255;
+		dst += color;
+	}
         // increment the ray sampling position
         sampling_pos += ray_increment;
 
@@ -254,7 +260,24 @@ void main()
         // update the loop termination condition
         inside_volume = inside_volume_bounds(sampling_pos);
     }
+    if (!front2back) {
+	sampling_pos -= ray_increment;
+        inside_volume = inside_volume_bounds(sampling_pos);
+	dst = vec4(1,1,1,0);
+	//dst = vec4(0,0,0,0);
+	while (inside_volume) {
+		float s = get_sample_data(sampling_pos);
+		vec4 color = texture(transfer_texture, vec2(s, s));
+		float alpha = color.a;
+		dst = (1-alpha)*dst + alpha*color;
+		sampling_pos -= ray_increment;
+		inside_volume = inside_volume_bounds(sampling_pos);
+
+	}
+	//dst.a = dst.a*255;
+    }
 #endif 
+
 
     // return the calculated color value
     FragColor = dst;
