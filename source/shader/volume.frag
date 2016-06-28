@@ -237,6 +237,7 @@ void main()
 
     bool front2back = true;
     float trans = 1;
+    float prev_a = 0;
     float opacity_corr = 1;
     while (inside_volume)
     {
@@ -244,24 +245,39 @@ void main()
         float s = get_sample_data(sampling_pos);
         vec4 color = texture(transfer_texture, vec2(s, s));
 #if ENABLE_OPACITY_CORRECTION == 1 // Opacity Correction
-	opacity_corr = ( sampling_distance / sampling_distance_ref)*500;
+	opacity_corr = ( sampling_distance / sampling_distance_ref)*150;
 #else
 #endif
 	if (front2back) {
-		if (trans <= 0.1) {break;}
+		if (trans < 0.01) {break;}
 		else {
-		float a = pow(color.a , opacity_corr);
-		trans = trans * (1-a);
-		color.a =a;
-		dst += color * (trans);
+		float alpha = color.a;
+		alpha = 1- pow(1-alpha , opacity_corr);
+		trans = trans * (1-prev_a);
+		dst += color *  trans * alpha;
+		prev_a = alpha;
+
+#if ENABLE_LIGHTNING == 1 // Add Shading
+	vec3 normal = get_gradient(sampling_pos);
+	vec4 norm = vec4(normal , 1.0);
+	vec3 L = normalize(light_position - sampling_pos);
+	vec3 E = normalize(-sampling_pos);
+	vec3 R = normalize(-reflect(L,normal));
+
+	vec4 ambient = vec4(light_ambient_color , 1.0);
+
+	vec4 diffuse = vec4(light_diffuse_color,1.0)*max(dot(normal,L),0.0);
+
+	vec4 specular = vec4(light_specular_color,1.0)* pow(max(dot(R,E),0.0),light_ref_coef);
+	dst += (ambient + diffuse + specular)*(1-trans)*0.01 ;
+	//front2back = false;
+#endif
 		}
+
 	}
         // increment the ray sampling position
         sampling_pos += ray_increment;
 
-#if ENABLE_LIGHTNING == 1 // Add Shading
-        IMPLEMENT;
-#endif
 
         // update the loop termination condition
         inside_volume = inside_volume_bounds(sampling_pos);
@@ -269,8 +285,7 @@ void main()
     if (!front2back) {
 	sampling_pos -= ray_increment;
         inside_volume = inside_volume_bounds(sampling_pos);
-	dst = vec4(1,1,1,0);
-	//dst = vec4(0,0,0,0);
+	dst = vec4(0,0,0,0);
 	while (inside_volume) {
 		float s = get_sample_data(sampling_pos);
 		vec4 color = texture(transfer_texture, vec2(s, s));
@@ -280,8 +295,8 @@ void main()
 		inside_volume = inside_volume_bounds(sampling_pos);
 
 	}
-	//dst.a = dst.a*255;
     }
+	dst.a = 1; 
 #endif 
 
 
