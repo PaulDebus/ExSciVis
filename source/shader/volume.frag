@@ -235,20 +235,26 @@ void main()
     // another termination condition for early ray termination is added
     dst = vec4(0,0,0,0);
 
-    bool front2back = false;
+    bool front2back = true;
+    float trans = 1;
+    float opacity_corr = 1;
     while (inside_volume)
     {
 	 // get sample
-#if ENABLE_OPACITY_CORRECTION == 1 // Opacity Correction
-        IMPLEMENT;
-#else
         float s = get_sample_data(sampling_pos);
         vec4 color = texture(transfer_texture, vec2(s, s));
+#if ENABLE_OPACITY_CORRECTION == 1 // Opacity Correction
+	opacity_corr = ( sampling_distance / sampling_distance_ref)*500;
+#else
 #endif
 	if (front2back) {
-		if (dst.a > 1) break;
-		color.a = color.a/255;
-		dst += color;
+		if (trans <= 0.1) {break;}
+		else {
+		float a = pow(color.a , opacity_corr);
+		trans = trans * (1-a);
+		color.a =a;
+		dst += color * (trans);
+		}
 	}
         // increment the ray sampling position
         sampling_pos += ray_increment;
