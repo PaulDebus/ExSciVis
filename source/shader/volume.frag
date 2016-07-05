@@ -66,6 +66,25 @@ get_gradient(vec3 pos)
 	return normalize(vec3(dx,dy,dz));
 }
 
+vec3
+get_gradient_original(vec3 pos)
+{
+	float dim_x = volume_dimensions.x / max_bounds.x;
+	float dim_y = volume_dimensions.y / max_bounds.y;
+	float dim_z = volume_dimensions.z / max_bounds.z;
+
+	vec3 prevx = pos - vec3(1/dim_x,0,0);
+	vec3 nextx = pos + vec3(1/dim_x,0,0);
+	vec3 prevy = pos - vec3(0,1/dim_y,0);
+	vec3 nexty = pos + vec3(0,1/dim_y,0);
+	vec3 prevz = pos - vec3(0,0,1/dim_z);
+	vec3 nextz = pos + vec3(0,0,1/dim_z);
+	float dx = get_sample_data(nextx) - get_sample_data(prevx);
+	float dy = get_sample_data(nexty) - get_sample_data(prevy);
+	float dz = get_sample_data(nextz) - get_sample_data(prevz);
+	return vec3(dx,dy,dz);
+}
+
 void main()
 {
     /// One step trough the volume
@@ -256,25 +275,29 @@ void main()
 		trans = trans * (1-prev_a);
 		dst += color *  trans * alpha;
 		prev_a = alpha;
+			}
+		}
 
 #if ENABLE_LIGHTNING == 1 // Add Shading
+	
 	vec3 normal = get_gradient(sampling_pos);
+	if (length(get_gradient_original(sampling_pos)) > 0.1) {
 	vec4 norm = vec4(normal , 1.0);
 	vec3 L = normalize(light_position - sampling_pos);
 	vec3 E = normalize(-sampling_pos);
 	vec3 R = normalize(-reflect(L,normal));
-
 	vec4 ambient = vec4(light_ambient_color , 1.0);
-
-	vec4 diffuse = vec4(light_diffuse_color,1.0)*max(dot(normal,L),0.0);
-
-	vec4 specular = vec4(light_specular_color,1.0)* pow(max(dot(R,E),0.0),light_ref_coef);
-	dst += (ambient + diffuse + specular)*(1-trans)*0.01 ;
-	//front2back = false;
-#endif
+	vec4 diffuse = vec4(0,0,0,0);
+	vec4 specular = vec4(0,0,0,0);
+	if (get_sample_data(sampling_pos + 0.01*L) < get_sample_data(sampling_pos)){
+		diffuse = vec4(light_diffuse_color,1.0)*max(dot(normal,L),0.0);
+		specular = vec4(light_specular_color,1.0)* pow(max(dot(R,E),0.0),light_ref_coef);
 		}
-
+	dst += (ambient + diffuse + specular)*(1-trans)*(1/sampling_distance_ref)*(0.05) ;
+	//front2back = false;
 	}
+#endif
+	
         // increment the ray sampling position
         sampling_pos += ray_increment;
 
@@ -289,7 +312,7 @@ void main()
 	while (inside_volume) {
 		float s = get_sample_data(sampling_pos);
 		vec4 color = texture(transfer_texture, vec2(s, s));
-		float alpha = color.a;
+		float alpha = 1-pow(1-color.a, opacity_corr);
 		dst = (1-alpha)*dst + alpha*color;
 		sampling_pos -= ray_increment;
 		inside_volume = inside_volume_bounds(sampling_pos);
